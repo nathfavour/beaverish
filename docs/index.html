@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Beaverish - High-Throughput Event Trading Engine & MCP Server</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <style>
+    :root {
+      --pico-primary: #10b981;
+      --pico-primary-background: #10b981;
+    }
+    body {
+      padding: 2rem 1rem;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    pre {
+      background: #1e1e2e;
+      color: #cdd6f4;
+      padding: 1rem;
+      border-radius: 8px;
+      overflow-x: auto;
+    }
+    .badge {
+      display: inline-block;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      font-weight: bold;
+      background: #334155;
+      color: #f8fafc;
+      margin-right: 0.5rem;
+    }
+    .hero {
+      margin-bottom: 2rem;
+      border-bottom: 1px solid var(--pico-muted-border-color);
+      padding-bottom: 2rem;
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <h1>🦫 Beaverish</h1>
+    <p>High-throughput, protocol-agnostic daemon & Model Context Protocol (MCP) server for binary event contracts and order-book prediction markets on Somnia EVM.</p>
+    <div>
+      <span class="badge">Go 1.25</span>
+      <span class="badge">Somnia Chain ID: 50312</span>
+      <span class="badge">Model Context Protocol (MCP)</span>
+      <span class="badge">Zero SaaS Dependency</span>
+    </div>
+  </header>
+
+  <main>
+    <section>
+      <h2>⚡ One-Command Installation</h2>
+      <p>Install Beaverish directly from source in a single command:</p>
+      <pre><code>curl -sSL https://raw.githubusercontent.com/nathfavour/beaverish/main/install.sh | sh</code></pre>
+      <p>Or run via GitHub Container Registry (GHCR):</p>
+      <pre><code>docker run -i --rm ghcr.io/nathfavour/beaverish:latest --mcp</code></pre>
+    </section>
+
+    <section>
+      <h2>🤖 First-Class MCP Integration</h2>
+      <p>Beaverish provides stdio JSON-RPC 2.0 tools for Claude Code, Codex, Antigravity, and Cursor:</p>
+      <ul>
+        <li><code>get_markets</code>: Fetch active prediction event contracts & orderbook depths.</li>
+        <li><code>evaluate_market</code>: Evaluate parity edge arbitrage (< 1.00) & momentum signals.</li>
+        <li><code>execute_order</code>: Sign and dispatch EVM orders on Somnia testnet.</li>
+        <li><code>sweep_settlements</code>: Autonomous payout redemption for resolved positions.</li>
+        <li><code>get_account_status</code>: Collateral balance, native balance, and open position tracker.</li>
+      </ul>
+      <p><a href="MCP.html">View Detailed MCP Integration Guide &rarr;</a></p>
+    </section>
+
+    <section>
+      <h2>📖 Documentation</h2>
+      <ul>
+        <li><a href="ARCHITECTURE.md">System Architecture Blueprint</a></li>
+        <li><a href="MCP.md">MCP Protocol Specification</a></li>
+        <li><a href="SDK_FEEDBACK.md">SDK & Somnia Protocol Technical Feedback</a></li>
+      </ul>
+    </section>
+  </main>
+
+  <footer>
+    <small>&copy; Beaverish Project. Released under MIT License.</small>
+  </footer>
+</body>
+</html>
