@@ -14,6 +14,7 @@ import (
 	"github.com/nathfavour/beaverish/pkg/logger"
 	"github.com/nathfavour/beaverish/pkg/mcp"
 	"github.com/nathfavour/beaverish/pkg/signer"
+	"github.com/nathfavour/beaverish/pkg/tui"
 )
 
 var (
@@ -23,6 +24,7 @@ var (
 func main() {
 	configPath := flag.String("config", "", "Path to configuration file")
 	mcpMode := flag.Bool("mcp", false, "Run as Model Context Protocol (MCP) server over POSIX stdio")
+	tuiMode := flag.Bool("tui", false, "Run with interactive Lipgloss / Bubbletea TUI dashboard")
 	daemonMode := flag.Bool("daemon", false, "Run in headless autonomous trading loop")
 	dryRun := flag.Bool("dry-run", false, "Enable dry-run mode (no real transactions submitted)")
 	privateKey := flag.String("key", "", "Hex private key for EVM transactor")
@@ -60,7 +62,7 @@ func main() {
 		cfg.Runtime.Debug = true
 	}
 
-	// In MCP mode, stdout is strictly JSON-RPC 2.0; logs go to stderr
+	// In MCP or TUI mode, stdout is reserved; logs go to stderr
 	logger.Init(os.Stderr, cfg.Runtime.LogFormat, cfg.Runtime.Debug)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -108,6 +110,19 @@ func main() {
 			logger.Errorf("MCP Server error: %v", err)
 			os.Exit(1)
 		}
+		return
+	}
+
+	if *tuiMode {
+		if err := coreEngine.Start(ctx); err != nil {
+			logger.Errorf("Engine start error: %v", err)
+			os.Exit(1)
+		}
+		if err := tui.RunTUI(cfg, coreEngine); err != nil {
+			logger.Errorf("TUI error: %v", err)
+			os.Exit(1)
+		}
+		coreEngine.Stop()
 		return
 	}
 
