@@ -23,6 +23,12 @@ Run this single command in your terminal to build and install `beaverish` to `~/
 curl -sSL https://raw.githubusercontent.com/nathfavour/beaverish/main/install.sh | sh
 ```
 
+Or install via [Anyisland](https://github.com/nathfavour/anyisland):
+
+```bash
+anyisland install github.com/nathfavour/beaverish
+```
+
 Or using `go install`:
 
 ```bash

@@ -1,0 +1,15 @@
+{
+  "name": "beaverish",
+  "version": "1.0.0",
+  "description": "High-throughput binary event contract engine & MCP server for Somnia EVM.",
+  "build": {
+    "steps": [
+      "go build -o beaverish ./cmd/agent"
+    ],
+    "bin": "beaverish"
+  },
+  "runtime": {
+    "pulse": false
+  },
+  "repository": "github.com/nathfavour/beaverish"
+}
