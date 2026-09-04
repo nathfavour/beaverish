@@ -136,3 +136,7 @@ func (e *Engine) Adapter() types.MarketAdapter {
 func (e *Engine) Settler() *SettlementDaemon {
 	return e.settler
 }
+
+func (e *Engine) Executor() *ExecutionPipeline {
+	return e.executor
+}

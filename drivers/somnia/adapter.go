@@ -76,11 +76,23 @@ func (a *SomniaAdapter) syncMarkets(ctx context.Context) {
 	now := time.Now().Unix()
 	oneUnit := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
 
-	// Market 1: BTC-USD 5m binary event contract
-	pAskUp1 := new(big.Int).Div(new(big.Int).Mul(oneUnit, big.NewInt(51)), big.NewInt(100))
-	pBidUp1 := new(big.Int).Div(new(big.Int).Mul(oneUnit, big.NewInt(50)), big.NewInt(100))
-	pAskDown1 := new(big.Int).Div(new(big.Int).Mul(oneUnit, big.NewInt(50)), big.NewInt(100))
-	pBidDown1 := new(big.Int).Div(new(big.Int).Mul(oneUnit, big.NewInt(49)), big.NewInt(100))
+	// Dynamic wave to simulate fluctuating CLOB depth and occasional arbitrage windows
+	tickPhase := (now / 3) % 4
+	askUpPct1 := int64(51)
+	askDownPct1 := int64(50)
+	if tickPhase == 1 {
+		// Parity arbitrage window: AskUp + AskDown = 0.45 + 0.46 = 0.91 < 0.96 (edge!)
+		askUpPct1 = 45
+		askDownPct1 = 46
+	} else if tickPhase == 2 {
+		askUpPct1 = 48
+		askDownPct1 = 51
+	}
+
+	pAskUp1 := new(big.Int).Div(new(big.Int).Mul(oneUnit, big.NewInt(askUpPct1)), big.NewInt(100))
+	pBidUp1 := new(big.Int).Div(new(big.Int).Mul(oneUnit, big.NewInt(askUpPct1-1)), big.NewInt(100))
+	pAskDown1 := new(big.Int).Div(new(big.Int).Mul(oneUnit, big.NewInt(askDownPct1)), big.NewInt(100))
+	pBidDown1 := new(big.Int).Div(new(big.Int).Mul(oneUnit, big.NewInt(askDownPct1-1)), big.NewInt(100))
 
 	m1 := types.MarketSnapshot{
 		MarketID:        "0x7b1c3a8e9d0f4125a83b27e891c3f5e042a9b1c7000000000000000000000001",
@@ -96,11 +108,18 @@ func (a *SomniaAdapter) syncMarkets(ctx context.Context) {
 		Status:          types.MarketStatusActive,
 	}
 
-	// Market 2: ETH-USD 10m binary event contract
-	pAskUp2 := new(big.Int).Div(new(big.Int).Mul(oneUnit, big.NewInt(53)), big.NewInt(100))
-	pBidUp2 := new(big.Int).Div(new(big.Int).Mul(oneUnit, big.NewInt(52)), big.NewInt(100))
-	pAskDown2 := new(big.Int).Div(new(big.Int).Mul(oneUnit, big.NewInt(48)), big.NewInt(100))
-	pBidDown2 := new(big.Int).Div(new(big.Int).Mul(oneUnit, big.NewInt(47)), big.NewInt(100))
+	askUpPct2 := int64(53)
+	askDownPct2 := int64(48)
+	if tickPhase == 3 {
+		// Momentum window: AskUp drops to 0.38, AskDown rises to 0.66
+		askUpPct2 = 38
+		askDownPct2 = 66
+	}
+
+	pAskUp2 := new(big.Int).Div(new(big.Int).Mul(oneUnit, big.NewInt(askUpPct2)), big.NewInt(100))
+	pBidUp2 := new(big.Int).Div(new(big.Int).Mul(oneUnit, big.NewInt(askUpPct2-1)), big.NewInt(100))
+	pAskDown2 := new(big.Int).Div(new(big.Int).Mul(oneUnit, big.NewInt(askDownPct2)), big.NewInt(100))
+	pBidDown2 := new(big.Int).Div(new(big.Int).Mul(oneUnit, big.NewInt(askDownPct2-1)), big.NewInt(100))
 
 	m2 := types.MarketSnapshot{
 		MarketID:        "0x9e8a7b6c5d4e3f21a0b9c8d7e6f5a4b3c2d1e0f9000000000000000000000002",

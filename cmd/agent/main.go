@@ -124,8 +124,8 @@ func main() {
 		logger.Warnf("Single instance coordinator warning: %v", err)
 	}
 
-	// If running CLI in secondary terminal and NOT in MCP mode, attach as live stream follower
-	if !isServer && !*mcpMode && !*tuiMode {
+	// If another instance is running and headless daemon mode is requested, attach follower console
+	if !isServer && *daemonMode && !*mcpMode {
 		printBanner(cfg, "")
 		logger.Section("FOLLOWER CONSOLE ATTACHED")
 		logger.Infof("Primary Beaverish engine is active! Attaching follower console to live stream...")
@@ -185,7 +185,9 @@ func main() {
 		return
 	}
 
-	if *tuiMode {
+	// Interactive TUI runs when -tui is specified, OR by default when run interactively without -daemon
+	runTUI := *tuiMode || (!*daemonMode && !*mcpMode)
+	if runTUI {
 		if err := coreEngine.Start(ctx); err != nil {
 			logger.Errorf("Engine start error: %v", err)
 			os.Exit(1)
@@ -198,8 +200,7 @@ func main() {
 		return
 	}
 
-	// Default CLI daemon execution: starts primary engine loop
-	_ = daemonMode
+	// Headless Daemon execution loop (-daemon flag)
 	if err := coreEngine.Start(ctx); err != nil {
 		logger.Errorf("Engine start error: %v", err)
 		os.Exit(1)

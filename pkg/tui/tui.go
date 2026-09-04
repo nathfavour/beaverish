@@ -15,39 +15,54 @@ import (
 )
 
 var (
-	// Styles
-	subtle    = lipgloss.AdaptiveColor{Light: "#D9DCCF", Dark: "#383838"}
-	highlight = lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#7D56F4"}
-	special   = lipgloss.AdaptiveColor{Light: "#43BF6D", Dark: "#73F59F"}
+	// Palettes & Colors
+	subtle    = lipgloss.AdaptiveColor{Light: "#999999", Dark: "#555555"}
+	highlight = lipgloss.AdaptiveColor{Light: "#7D56F4", Dark: "#874BFD"}
+	special   = lipgloss.AdaptiveColor{Light: "#2ECC71", Dark: "#43BF6D"}
 	warnColor = lipgloss.AdaptiveColor{Light: "#FFA500", Dark: "#FFB86C"}
+	danger    = lipgloss.AdaptiveColor{Light: "#E74C3C", Dark: "#FF5555"}
+	cyanColor = lipgloss.AdaptiveColor{Light: "#00BCD4", Dark: "#00E5FF"}
+	white     = lipgloss.Color("#FFFFFF")
 
 	titleStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("#FAFAFA")).
+			Foreground(white).
 			Background(highlight).
-			Padding(0, 1).
+			Padding(0, 2).
 			MarginBottom(1)
 
 	headerStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(special).
+			Foreground(cyanColor).
 			Padding(0, 1)
 
 	borderStyle = lipgloss.NewStyle().
 			BorderStyle(lipgloss.RoundedBorder()).
 			BorderForeground(highlight).
-			Padding(1, 2)
+			Padding(0, 1)
+
+	logBoxStyle = lipgloss.NewStyle().
+			BorderStyle(lipgloss.RoundedBorder()).
+			BorderForeground(subtle).
+			Padding(0, 1)
 
 	dimStyle = lipgloss.NewStyle().Foreground(subtle)
 )
 
 type tickMsg time.Time
 
+type tradeLog struct {
+	time    string
+	message string
+}
+
 type Model struct {
 	cfg        *config.Config
 	eng        *engine.Engine
 	markets    []types.MarketSnapshot
 	account    *types.AccountStatus
+	positions  []types.Position
+	logs       []tradeLog
 	lastSweep  time.Time
 	statusMsg  string
 	quitting   bool
@@ -62,8 +77,13 @@ func NewModel(cfg *config.Config, eng *engine.Engine) Model {
 		eng:       eng,
 		markets:   []types.MarketSnapshot{},
 		account:   &types.AccountStatus{},
+		positions: []types.Position{},
+		logs: []tradeLog{
+			{time: time.Now().Format("15:04:05"), message: "Engine connected to Somnia Shannon testnet"},
+			{time: time.Now().Format("15:04:05"), message: "Automated parity arbitrage & momentum evaluation active"},
+		},
 		lastSweep: time.Now(),
-		statusMsg: "Live Engine Connected",
+		statusMsg: "Ready — Press [u] Buy UP, [d] Buy DOWN, [s] Sweep",
 	}
 }
 
@@ -78,6 +98,17 @@ func tickCmd() tea.Cmd {
 	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
 		return tickMsg(t)
 	})
+}
+
+func (m *Model) addLog(msg string) {
+	entry := tradeLog{
+		time:    time.Now().Format("15:04:05"),
+		message: msg,
+	}
+	m.logs = append(m.logs, entry)
+	if len(m.logs) > 8 {
+		m.logs = m.logs[len(m.logs)-8:]
+	}
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -95,14 +126,56 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.cursor < len(m.markets)-1 {
 				m.cursor++
 			}
-		case "s":
+		case "u", "U":
+			// Execute manual UP trade on currently selected market
+			if len(m.markets) > 0 && m.cursor < len(m.markets) {
+				market := m.markets[m.cursor]
+				oneUnit := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
+				betSizeFloat := new(big.Float).Mul(big.NewFloat(m.cfg.Risk.MaxBetSizeUnits), new(big.Float).SetInt(oneUnit))
+				betSizeWei, _ := betSizeFloat.Int(nil)
+
+				sig := types.Signal{
+					ShouldExecute: true,
+					MarketID:      market.MarketID,
+					TargetSide:    types.OutcomeUp,
+					TargetPrice:   market.BestAskUp,
+					PositionSize:  betSizeWei,
+					Reason:        "Interactive Manual Execution: BUY UP",
+				}
+				m.eng.Executor().Dispatch(sig)
+				m.statusMsg = fmt.Sprintf("dispatched BUY UP on %s", market.UnderlyingAsset)
+				m.addLog(fmt.Sprintf("Manual Order: BUY UP on %s at %s", market.UnderlyingAsset, formatPrice(market.BestAskUp)))
+			}
+		case "d", "D":
+			// Execute manual DOWN trade on currently selected market
+			if len(m.markets) > 0 && m.cursor < len(m.markets) {
+				market := m.markets[m.cursor]
+				oneUnit := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
+				betSizeFloat := new(big.Float).Mul(big.NewFloat(m.cfg.Risk.MaxBetSizeUnits), new(big.Float).SetInt(oneUnit))
+				betSizeWei, _ := betSizeFloat.Int(nil)
+
+				sig := types.Signal{
+					ShouldExecute: true,
+					MarketID:      market.MarketID,
+					TargetSide:    types.OutcomeDown,
+					TargetPrice:   market.BestAskDown,
+					PositionSize:  betSizeWei,
+					Reason:        "Interactive Manual Execution: BUY DOWN",
+				}
+				m.eng.Executor().Dispatch(sig)
+				m.statusMsg = fmt.Sprintf("dispatched BUY DOWN on %s", market.UnderlyingAsset)
+				m.addLog(fmt.Sprintf("Manual Order: BUY DOWN on %s at %s", market.UnderlyingAsset, formatPrice(market.BestAskDown)))
+			}
+		case "s", "S":
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 			defer cancel()
 			txs, err := m.eng.Settler().Sweep(ctx)
 			if err != nil {
 				m.statusMsg = fmt.Sprintf("Sweep error: %v", err)
+				m.addLog(fmt.Sprintf("Sweep error: %v", err))
 			} else {
 				m.statusMsg = fmt.Sprintf("Manual Sweep: %d claims executed", len(txs))
+				m.addLog(fmt.Sprintf("Manual Sweep: %d claims redeemed", len(txs)))
 			}
 			m.lastSweep = time.Now()
 		}
@@ -120,6 +193,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if acc, err := m.eng.Adapter().GetAccountStatus(ctx); err == nil {
 			m.account = acc
 		}
+		if positions, err := m.eng.Adapter().GetPositions(ctx); err == nil {
+			m.positions = positions
+		}
 		return m, tickCmd()
 	}
 
@@ -134,7 +210,7 @@ func (m Model) View() string {
 	var b strings.Builder
 
 	// Top Title Banner
-	b.WriteString(titleStyle.Render("🦫 Beaverish Terminal — DreamDEX / Somnia EVM Market Engine"))
+	b.WriteString(titleStyle.Render("🦫 Beaverish Terminal — High-Throughput DreamDEX Arbitrage Engine"))
 	b.WriteString("\n\n")
 
 	// Account & Network Status Card
@@ -151,13 +227,13 @@ func (m Model) View() string {
 		m.cfg.Network.Driver,
 		nativeFloat,
 		colFloat,
-		m.account.OpenPositions,
+		len(m.positions),
 	)
 	b.WriteString(borderStyle.Render(accInfo))
 	b.WriteString("\n\n")
 
 	// Market Watcher Section
-	b.WriteString(headerStyle.Render("Active Event Contracts:"))
+	b.WriteString(headerStyle.Render("Active Event Contracts (Use [↑/↓] to navigate, [u] Buy UP, [d] Buy DOWN):"))
 	b.WriteString("\n")
 
 	if len(m.markets) == 0 {
@@ -169,17 +245,8 @@ func (m Model) View() string {
 				prefix = "> "
 			}
 
-			askUpStr := "N/A"
-			if market.BestAskUp != nil {
-				f, _ := new(big.Float).Quo(new(big.Float).SetInt(market.BestAskUp), oneUnitFloat).Float64()
-				askUpStr = fmt.Sprintf("%.3f", f)
-			}
-
-			askDownStr := "N/A"
-			if market.BestAskDown != nil {
-				f, _ := new(big.Float).Quo(new(big.Float).SetInt(market.BestAskDown), oneUnitFloat).Float64()
-				askDownStr = fmt.Sprintf("%.3f", f)
-			}
+			askUpStr := formatPrice(market.BestAskUp)
+			askDownStr := formatPrice(market.BestAskDown)
 
 			timeRemaining := market.ExpiryTimestamp - time.Now().Unix()
 			timeStr := fmt.Sprintf("%ds", timeRemaining)
@@ -187,8 +254,19 @@ func (m Model) View() string {
 				timeStr = "EXPIRED"
 			}
 
+			// Parity Edge Indicator
+			edgeStr := ""
+			if market.BestAskUp != nil && market.BestAskDown != nil {
+				sumAsks := new(big.Int).Add(market.BestAskUp, market.BestAskDown)
+				if sumAsks.Cmp(oneUnit) < 0 {
+					edgeVal := new(big.Int).Sub(oneUnit, sumAsks)
+					edgeF, _ := new(big.Float).Quo(new(big.Float).SetInt(edgeVal), oneUnitFloat).Float64()
+					edgeStr = fmt.Sprintf(" | Arb Edge: +%.1f%%", edgeF*100)
+				}
+			}
+
 			line := fmt.Sprintf(
-				"%s[%s] Asset: %-4s | Strike: $%s | UP Ask: %s | DOWN Ask: %s | Expiry: %-7s | Status: %s",
+				"%s[%s] Asset: %-4s | Strike: $%s | UP Ask: %s | DOWN Ask: %s | Expiry: %-7s | Status: %s%s",
 				prefix,
 				market.MarketID[:10]+"...",
 				market.UnderlyingAsset,
@@ -197,6 +275,7 @@ func (m Model) View() string {
 				askDownStr,
 				timeStr,
 				market.Status.String(),
+				edgeStr,
 			)
 
 			if i == m.cursor {
@@ -207,12 +286,35 @@ func (m Model) View() string {
 		}
 	}
 
-	// Status & Shortcuts footer
+	// Recent Activity Log Box
 	b.WriteString("\n")
-	b.WriteString(dimStyle.Render(fmt.Sprintf("Status: %s  |  [s] Manual Sweep  [q] Quit", m.statusMsg)))
+	b.WriteString(headerStyle.Render("Live Activity Feed:"))
+	b.WriteString("\n")
+	var logContent strings.Builder
+	if len(m.logs) == 0 {
+		logContent.WriteString(dimStyle.Render("  No activity recorded yet.\n"))
+	} else {
+		for _, l := range m.logs {
+			logContent.WriteString(fmt.Sprintf("  [%s] %s\n", l.time, l.message))
+		}
+	}
+	b.WriteString(logBoxStyle.Render(logContent.String()))
+	b.WriteString("\n")
+
+	// Status & Shortcuts footer
+	b.WriteString(dimStyle.Render(fmt.Sprintf("Status: %s  |  [u] Buy UP  [d] Buy DOWN  [s] Sweep  [q] Quit", m.statusMsg)))
 	b.WriteString("\n")
 
 	return b.String()
+}
+
+func formatPrice(price *big.Int) string {
+	if price == nil {
+		return "N/A"
+	}
+	oneUnit := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
+	f, _ := new(big.Float).Quo(new(big.Float).SetInt(price), new(big.Float).SetInt(oneUnit)).Float64()
+	return fmt.Sprintf("%.3f", f)
 }
 
 func formatStrike(strike *big.Int) string {
