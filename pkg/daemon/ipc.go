@@ -176,6 +176,12 @@ func AttachFollower(ctx context.Context, sockPath string) error {
 	}
 	defer conn.Close()
 
+	// Ensure connection closes when context cancels (e.g. on SIGINT/SIGTERM/timeout)
+	go func() {
+		<-ctx.Done()
+		_ = conn.Close()
+	}()
+
 	logger.Infof("Attached to primary Beaverish daemon via %s. Streaming live telemetry...", sockPath)
 
 	scanner := bufio.NewScanner(conn)
