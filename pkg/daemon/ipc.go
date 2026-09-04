@@ -37,6 +37,11 @@ func SocketPath() string {
 	return filepath.Join(runtimeDir, "beaverish.sock")
 }
 
+func CleanSocket() {
+	sock := SocketPath()
+	_ = os.Remove(sock)
+}
+
 // AcquireOrConnect tries to become the primary server daemon.
 // If another instance already owns the socket, it returns (instance, false, nil),
 // indicating this process should run as a follower/client streaming from or querying the primary.
@@ -56,7 +61,7 @@ func AcquireOrConnect(sockPath string) (*SingleInstance, bool, error) {
 		}, false, nil
 	}
 
-	// Socket file might be stale if server crashed
+	// Socket file might be stale if server crashed or re-executing
 	_ = os.Remove(sockPath)
 
 	l, err := net.Listen("unix", sockPath)
@@ -107,7 +112,6 @@ func (si *SingleInstance) StartBroadcaster(ctx context.Context) {
 					_ = c.Close()
 				}()
 
-				// Keep alive reading or waiting
 				buf := make([]byte, 1024)
 				for {
 					_, err := c.Read(buf)

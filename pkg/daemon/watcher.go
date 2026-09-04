@@ -34,7 +34,7 @@ func UpdateFilePath() string {
 	return filepath.Join(ConfigDir(), "update")
 }
 
-// WatchForUpdates watches the config directory for "update" file touches or config modifications.
+// WatchForUpdates watches the config directory for "update" file touches or binary replacements.
 // When detected, it gracefully restarts the binary with the same arguments using syscall.Exec.
 func WatchForUpdates(ctx context.Context, onReload func()) {
 	watcher, err := fsnotify.NewWatcher()
@@ -46,7 +46,6 @@ func WatchForUpdates(ctx context.Context, onReload func()) {
 	configDir := ConfigDir()
 	updateFile := UpdateFilePath()
 
-	// Ensure update file exists so it can be watched/touched
 	if _, err := os.Stat(updateFile); os.IsNotExist(err) {
 		_ = os.WriteFile(updateFile, []byte("ready\n"), 0644)
 	}
@@ -56,12 +55,16 @@ func WatchForUpdates(ctx context.Context, onReload func()) {
 		return
 	}
 
+	// Also watch the executable's directory to catch binary updates (e.g. from anyisland update)
+	execPath, err := os.Executable()
+	if err == nil {
+		execDir := filepath.Dir(execPath)
+		_ = watcher.Add(execDir)
+		logger.Debugf("Watching binary dir: %s", execDir)
+	}
+
 	go func() {
 		defer watcher.Close()
-		debounceTimer := time.NewTimer(0)
-		if !debounceTimer.Stop() {
-			<-debounceTimer.C
-		}
 
 		for {
 			select {
@@ -71,15 +74,22 @@ func WatchForUpdates(ctx context.Context, onReload func()) {
 				if !ok {
 					return
 				}
-				// Detect update trigger or config changes
+
 				base := filepath.Base(event.Name)
-				if base == "update" || base == "config.json" {
-					if event.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Chmod) != 0 {
-						logger.Infof("🔔 Detected change in %s! Triggering seamless live reload...", base)
+				execName := filepath.Base(execPath)
+
+				isUpdateTrigger := base == "update"
+				isConfigTrigger := base == "config.json"
+				isBinaryTrigger := base == execName || base == "beaverish"
+
+				if isUpdateTrigger || isConfigTrigger || isBinaryTrigger {
+					if event.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Chmod|fsnotify.Rename) != 0 {
+						logger.Infof("🔔 Change detected in %s! Initiating automatic in-place restart...", base)
 						if onReload != nil {
 							onReload()
 						}
-						// Restart process seamlessly
+						// Clean socket before re-exec so new instance binds smoothly
+						CleanSocket()
 						restartProcess()
 						return
 					}
@@ -95,19 +105,26 @@ func WatchForUpdates(ctx context.Context, onReload func()) {
 }
 
 func restartProcess() {
-	binary, err := exec.LookPath(os.Args[0])
+	execPath, err := os.Executable()
 	if err != nil {
-		binary = os.Args[0]
+		execPath, err = exec.LookPath(os.Args[0])
+		if err != nil {
+			execPath = os.Args[0]
+		}
 	}
 
-	logger.Infof("♻️ Re-executing Beaverish process: %s", binary)
-	// Give a tiny moment for listeners to flush
-	time.Sleep(150 * time.Millisecond)
+	logger.Infof("♻️ In-Place Re-executing Beaverish: %s", execPath)
+	time.Sleep(200 * time.Millisecond)
 
-	// Replace process in-place with new binary
-	err = syscall.Exec(binary, os.Args, os.Environ())
+	err = syscall.Exec(execPath, os.Args, os.Environ())
 	if err != nil {
-		logger.Errorf("Failed to exec restart: %v", err)
+		logger.Errorf("Failed to re-exec process: %v. Spawning backup process...", err)
+		cmd := exec.Command(execPath, os.Args[1:]...)
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		_ = cmd.Start()
+		os.Exit(0)
 	}
 }
 
