@@ -10,6 +10,7 @@ import (
 
 	"github.com/nathfavour/beaverish/config"
 	"github.com/nathfavour/beaverish/pkg/engine"
+	"github.com/nathfavour/beaverish/pkg/logger"
 	"github.com/nathfavour/beaverish/pkg/strategy"
 	"github.com/nathfavour/beaverish/pkg/types"
 )
@@ -48,7 +49,7 @@ func (h *Handler) GetTools() []Tool {
 		},
 		{
 			Name:        "evaluate_market",
-			Description: "Runs deterministic spread and probability evaluation on a target market to check for mispricing and parity arbitrage edge.",
+			Description: "Runs deterministic spread and probability evaluation on a target market to check for mispricing and parity arbitrage edge (Ask_UP + Ask_DOWN < 1.00).",
 			InputSchema: InputSchema{
 				Type: "object",
 				Properties: map[string]Property{
@@ -103,10 +104,19 @@ func (h *Handler) GetTools() []Tool {
 				Properties: map[string]Property{},
 			},
 		},
+		{
+			Name:        "get_config",
+			Description: "Returns the active Beaverish runtime configuration, chain parameters, and risk limits.",
+			InputSchema: InputSchema{
+				Type:       "object",
+				Properties: map[string]Property{},
+			},
+		},
 	}
 }
 
 func (h *Handler) CallTool(ctx context.Context, name string, args map[string]interface{}) (ToolResult, error) {
+	logger.Infof("MCP Tool invoked: %s with args: %+v", name, args)
 	switch name {
 	case "get_markets":
 		return h.handleGetMarkets(ctx, args)
@@ -118,7 +128,10 @@ func (h *Handler) CallTool(ctx context.Context, name string, args map[string]int
 		return h.handleSweepSettlements(ctx, args)
 	case "get_account_status":
 		return h.handleGetAccountStatus(ctx, args)
+	case "get_config":
+		return h.handleGetConfig(ctx, args)
 	default:
+		logger.Warnf("MCP Tool unknown: %s", name)
 		return ToolResult{
 			Content: []ContentItem{{Type: "text", Text: fmt.Sprintf("Unknown tool: %s", name)}},
 			IsError: true,
@@ -129,6 +142,7 @@ func (h *Handler) CallTool(ctx context.Context, name string, args map[string]int
 func (h *Handler) handleGetMarkets(ctx context.Context, args map[string]interface{}) (ToolResult, error) {
 	markets, err := h.eng.Adapter().GetActiveMarkets(ctx)
 	if err != nil {
+		logger.Errorf("Failed to retrieve active markets: %v", err)
 		return ToolResult{
 			Content: []ContentItem{{Type: "text", Text: fmt.Sprintf("Error querying markets: %v", err)}},
 			IsError: true,
@@ -143,6 +157,7 @@ func (h *Handler) handleGetMarkets(ctx context.Context, args map[string]interfac
 		}
 	}
 
+	logger.Infof("get_markets returned %d active markets (filter: %q)", len(filtered), filterUnderlying)
 	data, _ := json.MarshalIndent(filtered, "", "  ")
 	return ToolResult{
 		Content: []ContentItem{{Type: "text", Text: string(data)}},
@@ -160,6 +175,7 @@ func (h *Handler) handleEvaluateMarket(ctx context.Context, args map[string]inte
 
 	snapshot, err := h.eng.Adapter().GetMarketSnapshot(ctx, marketID)
 	if err != nil {
+		logger.Warnf("Market not found during evaluation: %s", marketID)
 		return ToolResult{
 			Content: []ContentItem{{Type: "text", Text: fmt.Sprintf("Market not found: %v", err)}},
 			IsError: true,
@@ -173,7 +189,12 @@ func (h *Handler) handleEvaluateMarket(ctx context.Context, args map[string]inte
 
 	res := EvalResult{MarketID: marketID, Signals: make([]types.Signal, 0)}
 	for _, strat := range h.strategies {
-		res.Signals = append(res.Signals, strat.Evaluate(*snapshot))
+		sig := strat.Evaluate(*snapshot)
+		res.Signals = append(res.Signals, sig)
+		if sig.ShouldExecute {
+			logger.Infof("🎯 Strategy [%s] signaled actionable edge for %s (Target: %s, Price: %s)",
+				strat.Name(), marketID, sig.TargetSide.String(), sig.TargetPrice.String())
+		}
 	}
 
 	data, _ := json.MarshalIndent(res, "", "  ")
@@ -185,7 +206,7 @@ func (h *Handler) handleEvaluateMarket(ctx context.Context, args map[string]inte
 func (h *Handler) handleExecuteOrder(ctx context.Context, args map[string]interface{}) (ToolResult, error) {
 	marketID, _ := args["market_id"].(string)
 	sideStr, _ := args["side"].(string)
-	
+
 	side, valid := types.ParseOutcomeSide(sideStr)
 	if !valid {
 		return ToolResult{
@@ -231,12 +252,14 @@ func (h *Handler) handleExecuteOrder(ctx context.Context, args map[string]interf
 	}
 
 	if err != nil {
+		logger.Errorf("execute_order failed: %v", err)
 		return ToolResult{
 			Content: []ContentItem{{Type: "text", Text: fmt.Sprintf("Execution failed: %v", err)}},
 			IsError: true,
 		}, nil
 	}
 
+	logger.Infof("🚀 Order submitted via MCP: Market=%s Side=%s Amount=%.2f Tx=%s", marketID, side.String(), amountFloat, txHash)
 	return ToolResult{
 		Content: []ContentItem{{Type: "text", Text: fmt.Sprintf("Order placed successfully. Transaction Hash: %s", txHash)}},
 	}, nil
@@ -245,6 +268,7 @@ func (h *Handler) handleExecuteOrder(ctx context.Context, args map[string]interf
 func (h *Handler) handleSweepSettlements(ctx context.Context, args map[string]interface{}) (ToolResult, error) {
 	txs, err := h.eng.Settler().Sweep(ctx)
 	if err != nil {
+		logger.Errorf("Settlement sweep error: %v", err)
 		return ToolResult{
 			Content: []ContentItem{{Type: "text", Text: fmt.Sprintf("Sweep error: %v", err)}},
 			IsError: true,
@@ -252,11 +276,13 @@ func (h *Handler) handleSweepSettlements(ctx context.Context, args map[string]in
 	}
 
 	if len(txs) == 0 {
+		logger.Infof("Settlement sweep finished: 0 claims pending")
 		return ToolResult{
 			Content: []ContentItem{{Type: "text", Text: "No open positions eligible for settlement payout sweep."}},
 		}, nil
 	}
 
+	logger.Infof("Settlement sweep finished: claimed %d payouts", len(txs))
 	data, _ := json.MarshalIndent(map[string]interface{}{
 		"claimed_transactions": txs,
 		"count":                len(txs),
@@ -270,6 +296,7 @@ func (h *Handler) handleSweepSettlements(ctx context.Context, args map[string]in
 func (h *Handler) handleGetAccountStatus(ctx context.Context, args map[string]interface{}) (ToolResult, error) {
 	status, err := h.eng.Adapter().GetAccountStatus(ctx)
 	if err != nil {
+		logger.Errorf("get_account_status failed: %v", err)
 		return ToolResult{
 			Content: []ContentItem{{Type: "text", Text: fmt.Sprintf("Error retrieving account status: %v", err)}},
 			IsError: true,
@@ -277,6 +304,31 @@ func (h *Handler) handleGetAccountStatus(ctx context.Context, args map[string]in
 	}
 
 	data, _ := json.MarshalIndent(status, "", "  ")
+	return ToolResult{
+		Content: []ContentItem{{Type: "text", Text: string(data)}},
+	}, nil
+}
+
+func (h *Handler) handleGetConfig(ctx context.Context, args map[string]interface{}) (ToolResult, error) {
+	safeConfig := struct {
+		Driver          string  `json:"driver"`
+		RPCURL          string  `json:"rpc_url"`
+		ChainID         int64   `json:"chain_id"`
+		MaxBetSizeUnits float64 `json:"max_bet_size_units"`
+		MinEdgeThreshold float64 `json:"min_edge_threshold"`
+		ExpiryCutoffSec int     `json:"expiry_cutoff_seconds"`
+		DryRun          bool    `json:"dry_run"`
+	}{
+		Driver:          h.cfg.Network.Driver,
+		RPCURL:          h.cfg.Network.RPCURL,
+		ChainID:         h.cfg.Network.ChainID,
+		MaxBetSizeUnits: h.cfg.Risk.MaxBetSizeUnits,
+		MinEdgeThreshold: h.cfg.Risk.MinEdgeThreshold,
+		ExpiryCutoffSec: h.cfg.Risk.ExpiryCutoffSeconds,
+		DryRun:          h.cfg.Runtime.DryRun,
+	}
+
+	data, _ := json.MarshalIndent(safeConfig, "", "  ")
 	return ToolResult{
 		Content: []ContentItem{{Type: "text", Text: string(data)}},
 	}, nil

@@ -53,24 +53,30 @@ func (l *Logger) log(lvl Level, prefix, msg string, args ...interface{}) {
 	defer l.mu.Unlock()
 
 	formattedMsg := fmt.Sprintf(msg, args...)
-	timestamp := time.Now().Format("2006-01-02 15:04:05.000")
+	timestamp := time.Now().Format("15:04:05.000")
 
 	if l.format == "json" {
 		fmt.Fprintf(l.out, `{"time":"%s","level":"%s","message":%q}`+"\n", timestamp, prefix, formattedMsg)
 	} else {
 		colorReset := "\033[0m"
-		colorCode := "\033[37m"
+		dimColor := "\033[90m"
+		var colorCode string
+		var icon string
 		switch lvl {
 		case DEBUG:
 			colorCode = "\033[36m" // Cyan
+			icon = "🔍"
 		case INFO:
 			colorCode = "\033[32m" // Green
+			icon = "🦫"
 		case WARN:
 			colorCode = "\033[33m" // Yellow
+			icon = "⚠️"
 		case ERROR:
 			colorCode = "\033[31m" // Red
+			icon = "🚨"
 		}
-		fmt.Fprintf(l.out, "[%s] %s[%s]%s %s\n", timestamp, colorCode, prefix, colorReset, formattedMsg)
+		fmt.Fprintf(l.out, "%s%s%s %s[%s]%s %s\n", dimColor, timestamp, colorReset, colorCode, icon+" "+prefix, colorReset, formattedMsg)
 	}
 }
 

@@ -95,6 +95,7 @@ Beaverish is built for **first-class integration** into AI orchestrators and cod
 | `execute_order` | `market_id`, `side` ("UP" \| "DOWN"), `amount`, `price_limit` | Signs and broadcasts a transaction order on Somnia testnet. |
 | `sweep_settlements` | *None* | Inspects positions, checks for resolved winning contracts, and claims payouts. |
 | `get_account_status`| *None* | Returns native testnet gas balance, collateral balance, open positions count, and realized PnL. |
+| `get_config`        | *None* | Returns active runtime configuration, network settings, and risk limits. |
 
 See [`docs/MCP.md`](docs/MCP.md) for full protocol specifications and request/response payloads.
 

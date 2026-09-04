@@ -102,6 +102,11 @@ Returns testnet gas token balance, collateral balance, open positions count, and
 
 - **Parameters**: None.
 
+### `get_config`
+Returns active runtime configuration parameters, target network settings, and risk limits.
+
+- **Parameters**: None.
+
 ---
 
 ## 3. Protocol Message Flow Example

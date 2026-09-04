@@ -25,7 +25,8 @@ func TestMCPServer_InitializeAndListTools(t *testing.T) {
 
 	input := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}` + "\n" +
 		`{"jsonrpc":"2.0","id":2,"method":"tools/list"}` + "\n" +
-		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"get_markets","arguments":{}}}` + "\n"
+		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"get_markets","arguments":{}}}` + "\n" +
+		`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"get_config","arguments":{}}}` + "\n"
 
 	inBuf := bytes.NewBufferString(input)
 	outBuf := &bytes.Buffer{}
@@ -41,8 +42,8 @@ func TestMCPServer_InitializeAndListTools(t *testing.T) {
 
 	outStr := outBuf.String()
 	lines := strings.Split(strings.TrimSpace(outStr), "\n")
-	if len(lines) < 3 {
-		t.Fatalf("Expected at least 3 JSON-RPC responses, got %d. Output: %s", len(lines), outStr)
+	if len(lines) < 4 {
+		t.Fatalf("Expected at least 4 JSON-RPC responses, got %d. Output: %s", len(lines), outStr)
 	}
 
 	// Verify initialize response
@@ -64,5 +65,11 @@ func TestMCPServer_InitializeAndListTools(t *testing.T) {
 	var callResp Response
 	if err := json.Unmarshal([]byte(lines[2]), &callResp); err != nil {
 		t.Fatalf("Failed to unmarshal tools/call response: %v", err)
+	}
+
+	// Verify tools/call get_config
+	var cfgResp Response
+	if err := json.Unmarshal([]byte(lines[3]), &cfgResp); err != nil {
+		t.Fatalf("Failed to unmarshal tools/call get_config: %v", err)
 	}
 }

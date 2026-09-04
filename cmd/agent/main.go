@@ -21,6 +21,17 @@ var (
 	version = "1.0.0"
 )
 
+func printBanner() {
+	banner := `
+  ╔═══════════════════════════════════════════════════════════╗
+  ║    🦫 BEAVERISH — Somnia EVM Event Trading & MCP Daemon   ║
+  ║    Version: v1.0.0 | Chain ID: 50312 (Somnia Testnet)     ║
+  ║    Mode: Autonomous Arbitrage, Sweeper & Real-Time Engine ║
+  ╚═══════════════════════════════════════════════════════════╝
+`
+	fmt.Fprintln(os.Stderr, banner)
+}
+
 func main() {
 	configPath := flag.String("config", "", "Path to configuration file")
 	mcpMode := flag.Bool("mcp", false, "Run as Model Context Protocol (MCP) server over POSIX stdio")
@@ -62,8 +73,13 @@ func main() {
 		cfg.Runtime.Debug = true
 	}
 
-	// In MCP or TUI mode, stdout is reserved; logs go to stderr
+	// In MCP or TUI mode, stdout is strictly reserved; logs route to stderr
 	logger.Init(os.Stderr, cfg.Runtime.LogFormat, cfg.Runtime.Debug)
+
+	// In default CLI daemon mode, show visual banner to stderr
+	if !*tuiMode {
+		printBanner()
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -87,7 +103,7 @@ func main() {
 			logger.Infof("Transactor Signer initialized. Address: %s", s.Address().Hex())
 		}
 	} else {
-		logger.Infof("Running without private key (Read-Only / Simulation mode)")
+		logger.Infof("Operating in Read-Only / Simulation mode (Set AGENT_PRIVATE_KEY for live transactions)")
 	}
 
 	var nonceMgr *engine.NonceManager
@@ -104,6 +120,7 @@ func main() {
 	coreEngine := engine.NewEngine(cfg, adapter)
 
 	if *mcpMode {
+		logger.Infof("Starting Beaverish MCP Server over POSIX stdio (JSON-RPC 2.0)...")
 		handler := mcp.NewHandler(cfg, coreEngine)
 		server := mcp.NewServer(os.Stdin, os.Stdout, handler)
 		if err := server.Start(ctx); err != nil {
@@ -126,14 +143,16 @@ func main() {
 		return
 	}
 
-	// Autonomous daemon execution
+	// Default CLI daemon execution: starts automatically with single 'beaverish' command
 	_ = daemonMode
 	if err := coreEngine.Start(ctx); err != nil {
 		logger.Errorf("Engine start error: %v", err)
 		os.Exit(1)
 	}
 
-	logger.Infof("Beaverish daemon active. Watching event markets... Press Ctrl+C to terminate.")
+	logger.Infof("Beaverish daemon active. Watching event markets & arbitrage opportunities...")
+	logger.Infof("Network: %s | RPC: %s | Max Bet: %.1f Units", cfg.Network.Driver, cfg.Network.RPCURL, cfg.Risk.MaxBetSizeUnits)
+	logger.Infof("Press Ctrl+C to terminate cleanly.")
 	<-ctx.Done()
 	coreEngine.Stop()
 }
