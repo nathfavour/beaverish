@@ -82,7 +82,10 @@ Beaverish is built for **first-class integration** into AI orchestrators and cod
 | :--- | :--- | :--- |
 | `get_markets` | `underlying` *(optional string: "BTC" \| "ETH")* | Retrieves all active event contracts on Somnia with strike prices, expirations, and bid/ask depths. |
 | `evaluate_market` | `market_id` *(required string)* | Runs deterministic spread and parity edge evaluation ($Ask_{UP} + Ask_{DOWN} < 1.00$) on target market. |
-| `execute_order` | `market_id`, `side` ("UP" \| "DOWN"), `amount`, `price_limit` | Signs and broadcasts a transaction order on Somnia testnet. |
+| `execute_order`     | `market_id`, `side` ("UP" \| "DOWN"), `amount`, `price_limit` | Signs and broadcasts a transaction order on Somnia testnet. |
+| `cancel_order`      | `order_id` *(required string)* | Cancels an active limit order on DreamDEX CLOB. |
+| `get_orderbook`     | `market_id` *(required string)* | Retrieves full bid and ask depth for both UP and DOWN outcome tokens. |
+| `get_positions`     | *None* | Lists all active and settled trade positions with entry prices, amounts, and statuses. |
 | `sweep_settlements` | *None* | Inspects positions, checks for resolved winning contracts, and claims payouts. |
 | `get_account_status`| *None* | Returns native testnet gas balance, collateral balance, open positions count, and realized PnL. |
 | `get_config`        | *None* | Returns active runtime configuration, network settings, and risk limits. |

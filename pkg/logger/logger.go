@@ -17,17 +17,21 @@ const (
 	ERROR
 )
 
+type HookFunc func(level Level, prefix, message string)
+
 type Logger struct {
 	mu     sync.Mutex
 	out    io.Writer
 	format string
 	level  Level
+	hooks  []HookFunc
 }
 
 var defaultLogger = &Logger{
 	out:    os.Stderr,
 	format: "text",
 	level:  INFO,
+	hooks:  make([]HookFunc, 0),
 }
 
 func Init(out io.Writer, format string, debug bool) {
@@ -38,11 +42,17 @@ func Init(out io.Writer, format string, debug bool) {
 	if debug {
 		lvl = DEBUG
 	}
-	defaultLogger = &Logger{
-		out:    out,
-		format: format,
-		level:  lvl,
-	}
+	defaultLogger.mu.Lock()
+	defaultLogger.out = out
+	defaultLogger.format = format
+	defaultLogger.level = lvl
+	defaultLogger.mu.Unlock()
+}
+
+func AddHook(h HookFunc) {
+	defaultLogger.mu.Lock()
+	defer defaultLogger.mu.Unlock()
+	defaultLogger.hooks = append(defaultLogger.hooks, h)
 }
 
 func (l *Logger) log(lvl Level, prefix, msg string, args ...interface{}) {
@@ -50,10 +60,13 @@ func (l *Logger) log(lvl Level, prefix, msg string, args ...interface{}) {
 		return
 	}
 	l.mu.Lock()
-	defer l.mu.Unlock()
-
 	formattedMsg := fmt.Sprintf(msg, args...)
 	timestamp := time.Now().Format("15:04:05.000")
+
+	// Trigger registered hooks (e.g. IPC broadcast)
+	for _, hook := range l.hooks {
+		hook(lvl, prefix, formattedMsg)
+	}
 
 	if l.format == "json" {
 		fmt.Fprintf(l.out, `{"time":"%s","level":"%s","message":%q}`+"\n", timestamp, prefix, formattedMsg)
@@ -78,6 +91,7 @@ func (l *Logger) log(lvl Level, prefix, msg string, args ...interface{}) {
 		}
 		fmt.Fprintf(l.out, "%s%s%s %s[%s]%s %s\n", dimColor, timestamp, colorReset, colorCode, icon+" "+prefix, colorReset, formattedMsg)
 	}
+	l.mu.Unlock()
 }
 
 func Debugf(msg string, args ...interface{}) {

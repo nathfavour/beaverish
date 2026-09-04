@@ -89,6 +89,42 @@ func (h *Handler) GetTools() []Tool {
 			},
 		},
 		{
+			Name:        "cancel_order",
+			Description: "Cancels an open limit order on Somnia DreamDEX CLOB.",
+			InputSchema: InputSchema{
+				Type: "object",
+				Properties: map[string]Property{
+					"order_id": {
+						Type:        "string",
+						Description: "Hex ID of the open order to cancel",
+					},
+				},
+				Required: []string{"order_id"},
+			},
+		},
+		{
+			Name:        "get_orderbook",
+			Description: "Retrieves complete orderbook depth (bids and asks for both UP and DOWN tokens) for a market.",
+			InputSchema: InputSchema{
+				Type: "object",
+				Properties: map[string]Property{
+					"market_id": {
+						Type:        "string",
+						Description: "The ID of the market to inspect",
+					},
+				},
+				Required: []string{"market_id"},
+			},
+		},
+		{
+			Name:        "get_positions",
+			Description: "Lists all current open and settled trade positions with entry prices, amounts, and settlement status.",
+			InputSchema: InputSchema{
+				Type:       "object",
+				Properties: map[string]Property{},
+			},
+		},
+		{
 			Name:        "sweep_settlements",
 			Description: "Inspects open positions, checks for resolved winning contracts, and executes payout claims.",
 			InputSchema: InputSchema{
@@ -124,6 +160,12 @@ func (h *Handler) CallTool(ctx context.Context, name string, args map[string]int
 		return h.handleEvaluateMarket(ctx, args)
 	case "execute_order":
 		return h.handleExecuteOrder(ctx, args)
+	case "cancel_order":
+		return h.handleCancelOrder(ctx, args)
+	case "get_orderbook":
+		return h.handleGetOrderbook(ctx, args)
+	case "get_positions":
+		return h.handleGetPositions(ctx, args)
 	case "sweep_settlements":
 		return h.handleSweepSettlements(ctx, args)
 	case "get_account_status":
@@ -265,6 +307,67 @@ func (h *Handler) handleExecuteOrder(ctx context.Context, args map[string]interf
 	}, nil
 }
 
+func (h *Handler) handleCancelOrder(ctx context.Context, args map[string]interface{}) (ToolResult, error) {
+	orderID, _ := args["order_id"].(string)
+	if orderID == "" {
+		return ToolResult{
+			Content: []ContentItem{{Type: "text", Text: "order_id is required"}},
+			IsError: true,
+		}, nil
+	}
+
+	txHash, err := h.eng.Adapter().CancelOrder(ctx, orderID)
+	if err != nil {
+		return ToolResult{
+			Content: []ContentItem{{Type: "text", Text: fmt.Sprintf("Cancel failed: %v", err)}},
+			IsError: true,
+		}, nil
+	}
+
+	logger.Infof("Order canceled: orderID=%s tx=%s", orderID, txHash)
+	return ToolResult{
+		Content: []ContentItem{{Type: "text", Text: fmt.Sprintf("Order %s cancellation dispatched. Tx: %s", orderID, txHash)}},
+	}, nil
+}
+
+func (h *Handler) handleGetOrderbook(ctx context.Context, args map[string]interface{}) (ToolResult, error) {
+	marketID, _ := args["market_id"].(string)
+	if marketID == "" {
+		return ToolResult{
+			Content: []ContentItem{{Type: "text", Text: "market_id is required"}},
+			IsError: true,
+		}, nil
+	}
+
+	ob, err := h.eng.Adapter().GetOrderbook(ctx, marketID)
+	if err != nil {
+		return ToolResult{
+			Content: []ContentItem{{Type: "text", Text: fmt.Sprintf("Failed to get orderbook: %v", err)}},
+			IsError: true,
+		}, nil
+	}
+
+	data, _ := json.MarshalIndent(ob, "", "  ")
+	return ToolResult{
+		Content: []ContentItem{{Type: "text", Text: string(data)}},
+	}, nil
+}
+
+func (h *Handler) handleGetPositions(ctx context.Context, args map[string]interface{}) (ToolResult, error) {
+	positions, err := h.eng.Adapter().GetPositions(ctx)
+	if err != nil {
+		return ToolResult{
+			Content: []ContentItem{{Type: "text", Text: fmt.Sprintf("Failed to retrieve positions: %v", err)}},
+			IsError: true,
+		}, nil
+	}
+
+	data, _ := json.MarshalIndent(positions, "", "  ")
+	return ToolResult{
+		Content: []ContentItem{{Type: "text", Text: string(data)}},
+	}, nil
+}
+
 func (h *Handler) handleSweepSettlements(ctx context.Context, args map[string]interface{}) (ToolResult, error) {
 	txs, err := h.eng.Settler().Sweep(ctx)
 	if err != nil {
@@ -311,21 +414,21 @@ func (h *Handler) handleGetAccountStatus(ctx context.Context, args map[string]in
 
 func (h *Handler) handleGetConfig(ctx context.Context, args map[string]interface{}) (ToolResult, error) {
 	safeConfig := struct {
-		Driver          string  `json:"driver"`
-		RPCURL          string  `json:"rpc_url"`
-		ChainID         int64   `json:"chain_id"`
-		MaxBetSizeUnits float64 `json:"max_bet_size_units"`
+		Driver           string  `json:"driver"`
+		RPCURL           string  `json:"rpc_url"`
+		ChainID          int64   `json:"chain_id"`
+		MaxBetSizeUnits  float64 `json:"max_bet_size_units"`
 		MinEdgeThreshold float64 `json:"min_edge_threshold"`
-		ExpiryCutoffSec int     `json:"expiry_cutoff_seconds"`
-		DryRun          bool    `json:"dry_run"`
+		ExpiryCutoffSec  int     `json:"expiry_cutoff_seconds"`
+		DryRun           bool    `json:"dry_run"`
 	}{
-		Driver:          h.cfg.Network.Driver,
-		RPCURL:          h.cfg.Network.RPCURL,
-		ChainID:         h.cfg.Network.ChainID,
-		MaxBetSizeUnits: h.cfg.Risk.MaxBetSizeUnits,
+		Driver:           h.cfg.Network.Driver,
+		RPCURL:           h.cfg.Network.RPCURL,
+		ChainID:          h.cfg.Network.ChainID,
+		MaxBetSizeUnits:  h.cfg.Risk.MaxBetSizeUnits,
 		MinEdgeThreshold: h.cfg.Risk.MinEdgeThreshold,
-		ExpiryCutoffSec: h.cfg.Risk.ExpiryCutoffSeconds,
-		DryRun:          h.cfg.Runtime.DryRun,
+		ExpiryCutoffSec:  h.cfg.Risk.ExpiryCutoffSeconds,
+		DryRun:           h.cfg.Runtime.DryRun,
 	}
 
 	data, _ := json.MarshalIndent(safeConfig, "", "  ")

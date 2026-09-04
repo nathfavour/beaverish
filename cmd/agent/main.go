@@ -10,6 +10,7 @@ import (
 
 	"github.com/nathfavour/beaverish/config"
 	"github.com/nathfavour/beaverish/drivers/somnia"
+	"github.com/nathfavour/beaverish/pkg/daemon"
 	"github.com/nathfavour/beaverish/pkg/engine"
 	"github.com/nathfavour/beaverish/pkg/logger"
 	"github.com/nathfavour/beaverish/pkg/mcp"
@@ -76,11 +77,6 @@ func main() {
 	// In MCP or TUI mode, stdout is strictly reserved; logs route to stderr
 	logger.Init(os.Stderr, cfg.Runtime.LogFormat, cfg.Runtime.Debug)
 
-	// In default CLI daemon mode, show visual banner to stderr
-	if !*tuiMode {
-		printBanner()
-	}
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -92,6 +88,35 @@ func main() {
 		logger.Infof("Shutdown signal received. Terminating safely...")
 		cancel()
 	}()
+
+	// Single-Instance Arbitration & Centralized Closed Feedback Loop
+	singleInst, isServer, err := daemon.AcquireOrConnect("")
+	if err != nil {
+		logger.Warnf("Single instance coordinator warning: %v", err)
+	}
+
+	// If running CLI in secondary terminal and NOT in MCP mode, attach as live stream follower
+	if !isServer && !*mcpMode && !*tuiMode {
+		printBanner()
+		logger.Infof("Primary Beaverish engine is already running! Attaching follower console to live stream...")
+		if err := daemon.AttachFollower(ctx, ""); err != nil {
+			logger.Errorf("Follower stream terminated: %v", err)
+		}
+		return
+	}
+
+	if singleInst != nil && singleInst.IsServer() {
+		defer singleInst.Close()
+		singleInst.StartBroadcaster(ctx)
+		// Hook logger so every event/telemetry/MCP log is broadcasted to attached follower shells
+		logger.AddHook(func(level logger.Level, prefix, message string) {
+			singleInst.Broadcast("log", fmt.Sprintf("[%s] %s", prefix, message))
+		})
+	}
+
+	if !*tuiMode {
+		printBanner()
+	}
 
 	var userSigner *signer.Signer
 	if cfg.Wallet.PrivateKey != "" {
@@ -143,7 +168,7 @@ func main() {
 		return
 	}
 
-	// Default CLI daemon execution: starts automatically with single 'beaverish' command
+	// Default CLI daemon execution: starts primary engine loop
 	_ = daemonMode
 	if err := coreEngine.Start(ctx); err != nil {
 		logger.Errorf("Engine start error: %v", err)

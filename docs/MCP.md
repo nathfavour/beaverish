@@ -92,6 +92,23 @@ Signs and broadcasts a limit or market order to buy binary outcome shares (UP or
   - `amount` *(number, required)*: Size in units (e.g. `1.0`, `5.0`).
   - `price_limit` *(number, optional)*: Limit price (e.g. `0.48`). If omitted or 0, executes as a market order.
 
+### `cancel_order`
+Cancels an open limit order on Somnia DreamDEX CLOB.
+
+- **Parameters**:
+  - `order_id` *(string, required)*: Hex ID of the open order to cancel.
+
+### `get_orderbook`
+Retrieves full bid and ask depth (prices and amounts for both UP and DOWN outcome tokens) for a market.
+
+- **Parameters**:
+  - `market_id` *(string, required)*: ID of the market to inspect.
+
+### `get_positions`
+Lists all current open and settled trade positions with entry prices, amounts, and settlement statuses.
+
+- **Parameters**: None.
+
 ### `sweep_settlements`
 Inspects open positions, checks for resolved winning contracts, and executes payout claims.
 

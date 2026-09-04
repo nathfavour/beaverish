@@ -20,6 +20,7 @@ var (
 	// Method signatures for DreamDEX CLOB / Event Contracts
 	placeLimitOrderMethodID  = crypto.Keccak256([]byte("placeLimitOrder(bytes32,uint8,uint256,uint256)"))[:4]
 	placeMarketOrderMethodID = crypto.Keccak256([]byte("placeMarketOrder(bytes32,uint8,uint256)"))[:4]
+	cancelOrderMethodID      = crypto.Keccak256([]byte("cancelOrder(bytes32)"))[:4]
 	claimPayoutMethodID      = crypto.Keccak256([]byte("claimPayout(bytes32)"))[:4]
 	getActiveMarketsMethodID = crypto.Keccak256([]byte("getActiveMarkets()"))[:4]
 )
@@ -249,6 +250,40 @@ func (a *SomniaAdapter) PlaceMarketOrder(
 	return txHash, nil
 }
 
+func (a *SomniaAdapter) CancelOrder(ctx context.Context, orderID string) (string, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if a.cfg.Runtime.DryRun || a.client.RPCClient == nil || a.signer == nil {
+		txHash := fmt.Sprintf("0xmock_cancel_%x", time.Now().UnixNano())
+		logger.Infof("[DRY-RUN/MOCK] CancelOrder orderID=%s tx=%s", orderID, txHash)
+		return txHash, nil
+	}
+
+	clobAddr := common.HexToAddress(a.cfg.Network.Contracts["clob_router"])
+	orderIDBytes := common.HexToHash(orderID).Bytes()
+
+	var data []byte
+	data = append(data, cancelOrderMethodID...)
+	data = append(data, orderIDBytes...)
+
+	nonce, err := a.nonceManager.NextNonce(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to obtain nonce: %w", err)
+	}
+
+	signedTx, err := a.signer.BuildAndSignTx(ctx, a.client.RPCClient, clobAddr, big.NewInt(0), data, nonce, 150000)
+	if err != nil {
+		return "", fmt.Errorf("failed to sign cancel order: %w", err)
+	}
+
+	if err := a.client.RPCClient.SendTransaction(ctx, signedTx); err != nil {
+		return "", fmt.Errorf("failed to send cancel order tx: %w", err)
+	}
+
+	return signedTx.Hash().Hex(), nil
+}
+
 func (a *SomniaAdapter) ClaimWinningPayout(ctx context.Context, marketID string) (string, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -256,7 +291,6 @@ func (a *SomniaAdapter) ClaimWinningPayout(ctx context.Context, marketID string)
 	if a.cfg.Runtime.DryRun || a.client.RPCClient == nil || a.signer == nil {
 		txHash := fmt.Sprintf("0xmock_claim_%x", time.Now().UnixNano())
 		logger.Infof("[DRY-RUN/MOCK] ClaimWinningPayout market=%s tx=%s", marketID, txHash)
-		// Mark settled
 		for i := range a.openPositions {
 			if a.openPositions[i].MarketID == marketID {
 				a.openPositions[i].IsSettled = true
@@ -357,5 +391,35 @@ func (a *SomniaAdapter) GetAccountStatus(ctx context.Context) (*types.AccountSta
 		CollateralBalance: colBal,
 		OpenPositions:     activePositionsCount,
 		RealizedPnL:       a.realizedPnL,
+	}, nil
+}
+
+func (a *SomniaAdapter) GetPositions(ctx context.Context) ([]types.Position, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	cp := make([]types.Position, len(a.openPositions))
+	copy(cp, a.openPositions)
+	return cp, nil
+}
+
+func (a *SomniaAdapter) GetOrderbook(ctx context.Context, marketID string) (*types.OrderbookDepth, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	m, ok := a.mockMarkets[marketID]
+	if !ok {
+		return nil, fmt.Errorf("market not found: %s", marketID)
+	}
+
+	oneUnit := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
+	vol := new(big.Int).Mul(oneUnit, big.NewInt(100)) // 100 units volume
+
+	return &types.OrderbookDepth{
+		MarketID: marketID,
+		BidsUp:   []types.OrderbookLevel{{Price: m.BestBidUp, Amount: vol}},
+		AsksUp:   []types.OrderbookLevel{{Price: m.BestAskUp, Amount: vol}},
+		BidsDown: []types.OrderbookLevel{{Price: m.BestBidDown, Amount: vol}},
+		AsksDown: []types.OrderbookLevel{{Price: m.BestAskDown, Amount: vol}},
 	}, nil
 }
