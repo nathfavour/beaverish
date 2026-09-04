@@ -89,6 +89,11 @@ func main() {
 		cancel()
 	}()
 
+	// Watch config directory and update file for real-time live reload
+	daemon.WatchForUpdates(ctx, func() {
+		logger.Infof("Live update triggered! Preparing in-place reload...")
+	})
+
 	// Single-Instance Arbitration & Centralized Closed Feedback Loop
 	singleInst, isServer, err := daemon.AcquireOrConnect("")
 	if err != nil {
@@ -98,9 +103,9 @@ func main() {
 	// If running CLI in secondary terminal and NOT in MCP mode, attach as live stream follower
 	if !isServer && !*mcpMode && !*tuiMode {
 		printBanner()
-		logger.Infof("Primary Beaverish engine is already running! Attaching follower console to live stream...")
+		logger.Infof("Primary Beaverish engine is active! Attaching follower console to live stream...")
 		if err := daemon.AttachFollower(ctx, ""); err != nil {
-			logger.Errorf("Follower stream terminated: %v", err)
+			logger.Errorf("Follower stream closed: %v", err)
 		}
 		return
 	}
@@ -177,6 +182,7 @@ func main() {
 
 	logger.Infof("Beaverish daemon active. Watching event markets & arbitrage opportunities...")
 	logger.Infof("Network: %s | RPC: %s | Max Bet: %.1f Units", cfg.Network.Driver, cfg.Network.RPCURL, cfg.Risk.MaxBetSizeUnits)
+	logger.Infof("Watching config & update triggers at: %s", daemon.ConfigDir())
 	logger.Infof("Press Ctrl+C to terminate cleanly.")
 	<-ctx.Done()
 	coreEngine.Stop()
