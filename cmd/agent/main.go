@@ -19,15 +19,15 @@ import (
 )
 
 var (
-	version = "1.0.0"
+	version = "1.0.1"
 )
 
 func printBanner() {
 	banner := `
   ╔═══════════════════════════════════════════════════════════╗
   ║    🦫 BEAVERISH — Somnia EVM Event Trading & MCP Daemon   ║
-  ║    Version: v1.0.0 | Chain ID: 50312 (Somnia Testnet)     ║
-  ║    Mode: Autonomous Arbitrage, Sweeper & Real-Time Engine ║
+  ║    Version: v1.0.1 | Chain ID: 50312 (Somnia Testnet)     ║
+  ║    Mode: Autonomous Arbitrage, Sweeper & Live Hot-Reload  ║
   ╚═══════════════════════════════════════════════════════════╝
 `
 	fmt.Fprintln(os.Stderr, banner)

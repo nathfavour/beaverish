@@ -1,6 +1,6 @@
 {
   "name": "beaverish",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "High-throughput binary event contract engine & MCP server for Somnia EVM.",
   "build": {
     "steps": [
