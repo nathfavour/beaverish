@@ -15,25 +15,15 @@ The system operates in dual execution modes:
 
 ## ⚡ Installation
 
-### Method 1: Single-Command Direct Install (From Source / Script)
+### Method 1: Single-Command Install (Anyisland + Beaverish)
 
-Run this single command in your terminal to build and install `beaverish` to `~/.local/bin` and scaffold configuration:
-
-```bash
-curl -sSL https://raw.githubusercontent.com/nathfavour/beaverish/main/install.sh | sh
-```
-
-Or install via [Anyisland](https://github.com/nathfavour/anyisland):
+Install both Anyisland and Beaverish in a single command:
 
 ```bash
-anyisland install github.com/nathfavour/beaverish
+curl -fsSL https://raw.githubusercontent.com/nathfavour/anyisland/master/install.sh | bash -s -- nathfavour/beaverish
 ```
 
-Or using `go install`:
-
-```bash
-go install github.com/nathfavour/beaverish/cmd/agent@latest
-```
+*(Already have Anyisland? Just run `anyisland install github.com/nathfavour/beaverish`)*
 
 ### Method 2: GitHub Container Registry (GHCR)
 
