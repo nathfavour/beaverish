@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/nathfavour/beaverish/config"
+	"github.com/nathfavour/beaverish/pkg/daemon"
 	"github.com/nathfavour/beaverish/pkg/engine"
 	"github.com/nathfavour/beaverish/pkg/logger"
 	"github.com/nathfavour/beaverish/pkg/strategy"
@@ -148,6 +149,14 @@ func (h *Handler) GetTools() []Tool {
 				Properties: map[string]Property{},
 			},
 		},
+		{
+			Name:        "trigger_reload",
+			Description: "Touches the live reload file in ~/.config/beaverish/update to seamlessly restart running daemon processes.",
+			InputSchema: InputSchema{
+				Type:       "object",
+				Properties: map[string]Property{},
+			},
+		},
 	}
 }
 
@@ -172,6 +181,8 @@ func (h *Handler) CallTool(ctx context.Context, name string, args map[string]int
 		return h.handleGetAccountStatus(ctx, args)
 	case "get_config":
 		return h.handleGetConfig(ctx, args)
+	case "trigger_reload":
+		return h.handleTriggerReload(ctx, args)
 	default:
 		logger.Warnf("MCP Tool unknown: %s", name)
 		return ToolResult{
@@ -434,5 +445,19 @@ func (h *Handler) handleGetConfig(ctx context.Context, args map[string]interface
 	data, _ := json.MarshalIndent(safeConfig, "", "  ")
 	return ToolResult{
 		Content: []ContentItem{{Type: "text", Text: string(data)}},
+	}, nil
+}
+
+func (h *Handler) handleTriggerReload(ctx context.Context, args map[string]interface{}) (ToolResult, error) {
+	err := daemon.TouchUpdate()
+	if err != nil {
+		return ToolResult{
+			Content: []ContentItem{{Type: "text", Text: fmt.Sprintf("Failed to touch update file: %v", err)}},
+			IsError: true,
+		}, nil
+	}
+	logger.Infof("Triggered live daemon reload signal across running instances")
+	return ToolResult{
+		Content: []ContentItem{{Type: "text", Text: "Live reload triggered successfully across running Beaverish instances."}},
 	}, nil
 }
