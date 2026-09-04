@@ -53,11 +53,26 @@ func main() {
 	maxBet := flag.Float64("max-bet", 0, "Max bet size in standard units")
 	debug := flag.Bool("debug", false, "Enable verbose debug logs")
 	verFlag := flag.Bool("version", false, "Print version and exit")
-
+	walletGen := flag.Bool("wallet-gen", false, "Generate a new EVM wallet using hdwallet-cli or internal fallback")
 	flag.Parse()
 
 	if *verFlag {
 		fmt.Printf("beaverish v%s\n", version)
+		os.Exit(0)
+	}
+
+	if *walletGen || (len(os.Args) > 1 && os.Args[1] == "wallet") {
+		w, err := signer.GenerateWallet()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error generating wallet: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Generated EVM Wallet (Source: %s)\n", w.Source)
+		fmt.Printf("Address:     %s\n", w.Address)
+		if w.Mnemonic != "" {
+			fmt.Printf("Mnemonic:    %s\n", w.Mnemonic)
+		}
+		fmt.Printf("Private Key: %s\n", w.PrivateKey)
 		os.Exit(0)
 	}
 

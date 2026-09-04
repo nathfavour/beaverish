@@ -17,6 +17,8 @@ type NetworkConfig struct {
 }
 
 type WalletConfig struct {
+	Address     string `json:"address,omitempty"`
+	Mnemonic    string `json:"mnemonic,omitempty"`
 	PrivateKey  string `json:"private_key"`
 	AutoApprove bool   `json:"auto_approve"`
 }
@@ -121,6 +123,18 @@ func LoadConfig(customPath string) (*Config, error) {
 		cfg.Wallet.PrivateKey = pk
 	} else if pk := os.Getenv("BEAVERISH_PRIVATE_KEY"); pk != "" {
 		cfg.Wallet.PrivateKey = pk
+	}
+
+	if mn := os.Getenv("AGENT_MNEMONIC"); mn != "" {
+		cfg.Wallet.Mnemonic = mn
+	} else if mn := os.Getenv("BEAVERISH_MNEMONIC"); mn != "" {
+		cfg.Wallet.Mnemonic = mn
+	}
+
+	if addr := os.Getenv("AGENT_WALLET_ADDRESS"); addr != "" {
+		cfg.Wallet.Address = addr
+	} else if addr := os.Getenv("BEAVERISH_WALLET_ADDRESS"); addr != "" {
+		cfg.Wallet.Address = addr
 	}
 
 	if rpc := os.Getenv("AGENT_RPC_URL"); rpc != "" {
