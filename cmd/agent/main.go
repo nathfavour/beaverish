@@ -22,15 +22,24 @@ var (
 	version = "1.0.1"
 )
 
-func printBanner() {
-	banner := `
-  ╔═══════════════════════════════════════════════════════════╗
-  ║    🦫 BEAVERISH — Somnia EVM Event Trading & MCP Daemon   ║
-  ║    Version: v1.0.1 | Chain ID: 50312 (Somnia Testnet)     ║
-  ║    Mode: Autonomous Arbitrage, Sweeper & Live Hot-Reload  ║
-  ╚═══════════════════════════════════════════════════════════╝
-`
-	fmt.Fprintln(os.Stderr, banner)
+func printBanner(cfg *config.Config, walletAddr string) {
+	cyan := "\033[36m"
+	bold := "\033[1m"
+	green := "\033[32m"
+	reset := "\033[0m"
+	dim := "\033[90m"
+
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintf(os.Stderr, "  %s%s╔════════════════════════════════════════════════════════════════════════╗%s\n", bold, cyan, reset)
+	fmt.Fprintf(os.Stderr, "  %s%s║               🦫 BEAVERISH HIGH-THROUGHPUT EVENT ENGINE               ║%s\n", bold, cyan, reset)
+	fmt.Fprintf(os.Stderr, "  %s%s║       Arbitrage, CLOB Settlement & MCP Stdio Streaming Daemon          ║%s\n", bold, cyan, reset)
+	fmt.Fprintf(os.Stderr, "  %s%s╚════════════════════════════════════════════════════════════════════════╝%s\n", bold, cyan, reset)
+	fmt.Fprintf(os.Stderr, "  %sVersion:%s v%-6s  %sNetwork:%s %-12s  %sChain ID:%s %-6d\n", dim, reset, version, dim, reset, cfg.Network.Driver, dim, reset, cfg.Network.ChainID)
+	fmt.Fprintf(os.Stderr, "  %sRPC:%s %-32s  %sMax Bet:%s %.1f Units\n", dim, reset, cfg.Network.RPCURL, dim, reset, cfg.Risk.MaxBetSizeUnits)
+	if walletAddr != "" {
+		fmt.Fprintf(os.Stderr, "  %sTransactor:%s %s%s%s\n", dim, reset, green, walletAddr, reset)
+	}
+	fmt.Fprintf(os.Stderr, "  %s────────────────────────────────────────────────────────────────────────%s\n\n", dim, reset)
 }
 
 func main() {
@@ -102,7 +111,8 @@ func main() {
 
 	// If running CLI in secondary terminal and NOT in MCP mode, attach as live stream follower
 	if !isServer && !*mcpMode && !*tuiMode {
-		printBanner()
+		printBanner(cfg, "")
+		logger.Section("FOLLOWER CONSOLE ATTACHED")
 		logger.Infof("Primary Beaverish engine is active! Attaching follower console to live stream...")
 		if err := daemon.AttachFollower(ctx, ""); err != nil {
 			logger.Errorf("Follower stream closed: %v", err)
@@ -119,21 +129,20 @@ func main() {
 		})
 	}
 
-	if !*tuiMode {
-		printBanner()
-	}
-
 	var userSigner *signer.Signer
+	var walletAddress string
 	if cfg.Wallet.PrivateKey != "" {
 		s, err := signer.NewSigner(cfg.Wallet.PrivateKey, cfg.Network.ChainID)
 		if err != nil {
 			logger.Warnf("Could not initialize signer: %v", err)
 		} else {
 			userSigner = s
-			logger.Infof("Transactor Signer initialized. Address: %s", s.Address().Hex())
+			walletAddress = s.Address().Hex()
 		}
-	} else {
-		logger.Infof("Operating in Read-Only / Simulation mode (Set AGENT_PRIVATE_KEY for live transactions)")
+	}
+
+	if !*tuiMode && !*mcpMode {
+		printBanner(cfg, walletAddress)
 	}
 
 	var nonceMgr *engine.NonceManager
@@ -150,7 +159,8 @@ func main() {
 	coreEngine := engine.NewEngine(cfg, adapter)
 
 	if *mcpMode {
-		logger.Infof("Starting Beaverish MCP Server over POSIX stdio (JSON-RPC 2.0)...")
+		logger.Section("MCP SERVER ACTIVE")
+		logger.Infof("Listening for tools/list, tools/call over POSIX stdio JSON-RPC 2.0...")
 		handler := mcp.NewHandler(cfg, coreEngine)
 		server := mcp.NewServer(os.Stdin, os.Stdout, handler)
 		if err := server.Start(ctx); err != nil {
@@ -180,10 +190,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	logger.Infof("Beaverish daemon active. Watching event markets & arbitrage opportunities...")
-	logger.Infof("Network: %s | RPC: %s | Max Bet: %.1f Units", cfg.Network.Driver, cfg.Network.RPCURL, cfg.Risk.MaxBetSizeUnits)
-	logger.Infof("Watching config & update triggers at: %s", daemon.ConfigDir())
-	logger.Infof("Press Ctrl+C to terminate cleanly.")
+	logger.Section("ACTIVE MONITORING LOOP")
+	logger.Infof("Streaming active markets, checking parity arbitrage & sweep payouts...")
+	logger.Infof("Hot-reload directory: %s", daemon.ConfigDir())
+	logger.Infof("Press Ctrl+C to terminate cleanly.\n")
 	<-ctx.Done()
 	coreEngine.Stop()
 }

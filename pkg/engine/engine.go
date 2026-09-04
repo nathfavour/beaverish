@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"math/big"
+	"sync"
 	"time"
 
 	"github.com/nathfavour/beaverish/config"
@@ -20,6 +21,10 @@ type Engine struct {
 	strategies  []types.Strategy
 	marketCh    chan types.MarketSnapshot
 	cancelFunc  context.CancelFunc
+
+	// Rate limiter to prevent endless log spamming of duplicate signals
+	lastSignalTime map[string]time.Time
+	sigMu          sync.Mutex
 }
 
 func NewEngine(cfg *config.Config, adapter types.MarketAdapter) *Engine {
@@ -33,13 +38,14 @@ func NewEngine(cfg *config.Config, adapter types.MarketAdapter) *Engine {
 	}
 
 	return &Engine{
-		cfg:        cfg,
-		adapter:    adapter,
-		watcher:    watcher,
-		executor:   executor,
-		settler:    settler,
-		strategies: strats,
-		marketCh:   make(chan types.MarketSnapshot, 100),
+		cfg:            cfg,
+		adapter:        adapter,
+		watcher:        watcher,
+		executor:       executor,
+		settler:        settler,
+		strategies:     strats,
+		marketCh:       make(chan types.MarketSnapshot, 100),
+		lastSignalTime: make(map[string]time.Time),
 	}
 }
 
@@ -47,18 +53,20 @@ func (e *Engine) Start(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	e.cancelFunc = cancel
 
-	logger.Infof("Starting Beaverish Core Engine [Driver: %s, ChainID: %d]...", e.cfg.Network.Driver, e.cfg.Network.ChainID)
+	logger.Section("ENGINE INITIALIZATION")
+	logger.Infof("Target Driver: %s | Chain ID: %d | Polling Interval: %dms",
+		e.cfg.Network.Driver, e.cfg.Network.ChainID, e.cfg.Runtime.PollIntervalMs)
 
 	// Pre-flight approval check
 	if e.cfg.Wallet.AutoApprove {
 		clobRouter := e.cfg.Network.Contracts["clob_router"]
 		collateral := e.cfg.Network.Contracts["collateral_token"]
-		if clobRouter != "" && collateral != "" {
-			logger.Infof("Verifying ERC-20 collateral allowance...")
+		if clobRouter != "" && collateral != "" && clobRouter != "0x0000000000000000000000000000000000000000" {
+			logger.Infof("Verifying ERC-20 collateral allowance against CLOB router (%s)...", clobRouter)
 			maxUint := new(big.Int).Sub(new(big.Int).Exp(big.NewInt(2), big.NewInt(256), nil), big.NewInt(1))
 			tx, err := e.adapter.EnsureAllowance(ctx, collateral, clobRouter, maxUint)
 			if err != nil {
-				logger.Warnf("EnsureAllowance pre-flight warning: %v", err)
+				logger.Warnf("EnsureAllowance pre-flight notice: %v", err)
 			} else if tx != "" {
 				logger.Infof("Allowance approved. Tx: %s", tx)
 			}
@@ -79,7 +87,7 @@ func (e *Engine) Stop() {
 	if e.cancelFunc != nil {
 		e.cancelFunc()
 	}
-	logger.Infof("Beaverish Core Engine stopped.")
+	logger.Infof("Beaverish Core Engine stopped cleanly.")
 }
 
 func (e *Engine) evaluationLoop(ctx context.Context) {
@@ -102,7 +110,17 @@ func (e *Engine) evaluationLoop(ctx context.Context) {
 			for _, strat := range e.strategies {
 				sig := strat.Evaluate(snapshot)
 				if sig.ShouldExecute {
-					logger.Infof("Strategy [%s] generated positive signal for market %s", strat.Name(), snapshot.MarketID)
+					// Debounce consecutive duplicate market signals by 3 seconds to ensure readable, spaced-out logs
+					e.sigMu.Lock()
+					lastT, exists := e.lastSignalTime[sig.MarketID]
+					if exists && time.Since(lastT) < 3*time.Second {
+						e.sigMu.Unlock()
+						continue
+					}
+					e.lastSignalTime[sig.MarketID] = time.Now()
+					e.sigMu.Unlock()
+
+					logger.Infof("Opportunity Discovered [%s] on Market: %s", strat.Name(), snapshot.MarketID)
 					e.executor.Dispatch(sig)
 					break
 				}
