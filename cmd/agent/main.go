@@ -156,7 +156,8 @@ func main() {
 		}
 	}
 
-	if !*tuiMode && !*mcpMode {
+	runTUI := *tuiMode || (!*daemonMode && !*mcpMode)
+	if !runTUI && !*mcpMode {
 		printBanner(cfg, walletAddress)
 	}
 
@@ -186,7 +187,6 @@ func main() {
 	}
 
 	// Interactive TUI runs when -tui is specified, OR by default when run interactively without -daemon
-	runTUI := *tuiMode || (!*daemonMode && !*mcpMode)
 	if runTUI {
 		if err := coreEngine.Start(ctx); err != nil {
 			logger.Errorf("Engine start error: %v", err)

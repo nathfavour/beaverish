@@ -73,10 +73,14 @@ type Model struct {
 
 func NewModel(cfg *config.Config, eng *engine.Engine) Model {
 	return Model{
-		cfg:       cfg,
-		eng:       eng,
-		markets:   []types.MarketSnapshot{},
-		account:   &types.AccountStatus{},
+		cfg:     cfg,
+		eng:     eng,
+		markets: []types.MarketSnapshot{},
+		account: &types.AccountStatus{
+			Address:           cfg.Wallet.Address,
+			NativeBalance:     big.NewInt(0),
+			CollateralBalance: big.NewInt(0),
+		},
 		positions: []types.Position{},
 		logs: []tradeLog{
 			{time: time.Now().Format("15:04:05"), message: "Engine connected to Somnia Shannon testnet"},
@@ -217,12 +221,27 @@ func (m Model) View() string {
 	oneUnit := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
 	oneUnitFloat := new(big.Float).SetInt(oneUnit)
 
-	nativeFloat := new(big.Float).Quo(new(big.Float).SetInt(m.account.NativeBalance), oneUnitFloat)
-	colFloat := new(big.Float).Quo(new(big.Float).SetInt(m.account.CollateralBalance), oneUnitFloat)
+	nativeBal := big.NewInt(0)
+	colBal := big.NewInt(0)
+	addrStr := m.cfg.Wallet.Address
+	if m.account != nil {
+		if m.account.NativeBalance != nil {
+			nativeBal = m.account.NativeBalance
+		}
+		if m.account.CollateralBalance != nil {
+			colBal = m.account.CollateralBalance
+		}
+		if m.account.Address != "" {
+			addrStr = m.account.Address
+		}
+	}
+
+	nativeFloat := new(big.Float).Quo(new(big.Float).SetInt(nativeBal), oneUnitFloat)
+	colFloat := new(big.Float).Quo(new(big.Float).SetInt(colBal), oneUnitFloat)
 
 	accInfo := fmt.Sprintf(
 		"Address: %s  |  Chain ID: %d (%s)\nNative Gas: %.4f STT  |  Collateral: %.2f Units  |  Open Positions: %d",
-		m.account.Address,
+		addrStr,
 		m.cfg.Network.ChainID,
 		m.cfg.Network.Driver,
 		nativeFloat,
